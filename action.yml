@@ -1,0 +1,50 @@
+name: "Yaffle Outputs"
+description: "Fetch Terraform outputs from a Yaffle preview for use in CI/CD pipelines"
+author: "Yaffle"
+
+branding:
+  icon: "download-cloud"
+  color: "green"
+
+inputs:
+  api-url:
+    description: "Yaffle API base URL"
+    required: false
+    default: "https://api.yaffle.dev"
+  org:
+    description: "Organization/owner name (defaults to repository owner)"
+    required: false
+  repo:
+    description: "Repository name (defaults to current repository name)"
+    required: false
+  pr-number:
+    description: "PR number to get outputs for (defaults to current PR)"
+    required: false
+  workspace:
+    description: "Workspace path (defaults to root '.')"
+    required: false
+    default: "."
+  token:
+    description: "GitHub token for authentication (defaults to GITHUB_TOKEN)"
+    required: false
+    default: ${{ github.token }}
+  wait:
+    description: "Wait for preview to be ready (true/false)"
+    required: false
+    default: "false"
+  wait-timeout:
+    description: "Timeout in seconds when waiting for preview (default: 300)"
+    required: false
+    default: "300"
+
+outputs:
+  preview-id:
+    description: "The Yaffle preview ID"
+  preview-status:
+    description: "The preview status (ready, planning, applying, failed, etc.)"
+  outputs-json:
+    description: "All outputs as a JSON string"
+
+runs:
+  using: "node20"
+  main: "dist/index.js"
