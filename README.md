@@ -14,7 +14,7 @@ This means:
 ## Usage
 
 ```yaml
-- uses: yaffle-dev/outputs-action@v1
+- uses: yaffle-dot-dev/outputs-action@v1
   id: infra
   with:
     # Optional: defaults to current PR
@@ -62,7 +62,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: yaffle-dev/outputs-action@v1
+      - uses: yaffle-dot-dev/outputs-action@v1
         id: infra
 
       - run: echo "ECS Cluster: ${{ steps.infra.outputs.cluster_arn }}"
@@ -75,7 +75,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: yaffle-dev/outputs-action@v1
+      - uses: yaffle-dot-dev/outputs-action@v1
         id: infra
         with:
           wait: true
@@ -95,12 +95,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: yaffle-dev/outputs-action@v1
+      - uses: yaffle-dot-dev/outputs-action@v1
         id: network
         with:
           workspace: infra/network
 
-      - uses: yaffle-dev/outputs-action@v1
+      - uses: yaffle-dot-dev/outputs-action@v1
         id: compute
         with:
           workspace: infra/compute
@@ -117,7 +117,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: yaffle-dev/outputs-action@v1
+      - uses: yaffle-dot-dev/outputs-action@v1
         id: infra
 
       - run: |
