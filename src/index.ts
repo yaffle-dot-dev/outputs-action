@@ -169,10 +169,6 @@ async function fetchOutputs(
 
 /**
  * Wait for preview to be ready using Server-Sent Events.
- * 
- * This opens a persistent connection to the SSE endpoint and waits for
- * status updates. Much more efficient than polling - the connection just
- * hangs until the server pushes an update.
  */
 async function waitForReadySSE(
   apiUrl: string,
@@ -240,12 +236,8 @@ async function waitForReadySSE(
     es.onerror = (err: Event) => {
       if (resolved) return
 
-      // EventSource will auto-reconnect on transient errors, but if
-      // the connection is completely dead, we should fail
       core.warning(`SSE connection error: ${err.type}`)
 
-      // Give it a moment to reconnect before giving up
-      // readyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
       setTimeout(() => {
         if (!resolved && es.readyState === 2) {
           resolved = true
