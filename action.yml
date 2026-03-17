@@ -10,7 +10,7 @@ inputs:
   api-url:
     description: "Yaffle API base URL"
     required: false
-    default: "https://api.yaffle.dev"
+    default: "https://yaffle.dev/api"
   org:
     description: "Organization/owner name (defaults to repository owner)"
     required: false
