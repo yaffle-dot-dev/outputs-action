@@ -29971,28 +29971,45 @@ async function run() {
         const workspace = core.getInput("workspace") || ".";
         const wait = core.getInput("wait") === "true";
         const waitTimeout = parseInt(core.getInput("wait-timeout") || "300", 10);
-        // Determine org, repo, and PR number
+        // Determine org, repo, and environment
         const context = github.context;
         const org = core.getInput("org") || context.repo.owner;
         const repo = core.getInput("repo") || context.repo.repo;
+        let environment = core.getInput("environment");
         let prNumber = parseInt(core.getInput("pr-number") || "0", 10);
-        // Try to get PR number from context if not provided
-        if (!prNumber) {
-            if (context.payload.pull_request) {
+        // Determine environment from context if not provided
+        if (!environment) {
+            if (prNumber) {
+                // PR number provided explicitly
+                environment = `prvw-${prNumber}`;
+            }
+            else if (context.payload.pull_request) {
+                // Running in PR context
                 prNumber = context.payload.pull_request.number;
+                environment = `prvw-${prNumber}`;
             }
             else if (context.payload.issue?.pull_request) {
+                // Running in issue context with PR
                 prNumber = context.payload.issue.number;
+                environment = `prvw-${prNumber}`;
+            }
+            else if (context.ref) {
+                // Running on a branch (e.g., push to main)
+                // Extract branch name from refs/heads/main -> main
+                const refMatch = context.ref.match(/^refs\/heads\/(.+)$/);
+                if (refMatch) {
+                    environment = refMatch[1];
+                }
             }
         }
-        if (!prNumber) {
-            throw new Error("Could not determine PR number. Please provide pr-number input or run in a pull_request context.");
+        if (!environment) {
+            throw new Error("Could not determine environment. Please provide environment, pr-number input, or run in a pull_request/push context.");
         }
-        core.info(`Fetching outputs for ${org}/${repo}#${prNumber} workspace=${workspace}`);
+        core.info(`Fetching outputs for ${org}/${repo} environment=${environment} workspace=${workspace}`);
         // Find the preview
-        const preview = await findPreview(apiUrl, token, org, repo, prNumber, workspace);
+        const preview = await findPreview(apiUrl, token, org, repo, environment, workspace);
         if (!preview) {
-            throw new Error(`No preview found for ${org}/${repo}#${prNumber} workspace=${workspace}`);
+            throw new Error(`No preview found for ${org}/${repo} environment=${environment} workspace=${workspace}`);
         }
         core.info(`Found preview ${preview.id} with status: ${preview.status}`);
         core.setOutput("preview-id", preview.id);
@@ -30041,8 +30058,8 @@ async function run() {
         }
     }
 }
-async function findPreview(apiUrl, token, org, repo, prNumber, workspace) {
-    const url = `${apiUrl}/api/previews?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&pr_number=${prNumber}`;
+async function findPreview(apiUrl, token, org, repo, environment, workspace) {
+    const url = `${apiUrl}/api/previews?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&environment=${encodeURIComponent(environment)}`;
     const response = await fetch(url, {
         headers: {
             Authorization: `Bearer ${token}`,
@@ -30079,10 +30096,6 @@ async function fetchOutputs(apiUrl, token, previewId) {
 }
 /**
  * Wait for preview to be ready using Server-Sent Events.
- *
- * This opens a persistent connection to the SSE endpoint and waits for
- * status updates. Much more efficient than polling - the connection just
- * hangs until the server pushes an update.
  */
 async function waitForReadySSE(apiUrl, token, previewId, timeoutSeconds) {
     return new Promise((resolve, reject) => {
@@ -30140,11 +30153,7 @@ async function waitForReadySSE(apiUrl, token, previewId, timeoutSeconds) {
         es.onerror = (err) => {
             if (resolved)
                 return;
-            // EventSource will auto-reconnect on transient errors, but if
-            // the connection is completely dead, we should fail
             core.warning(`SSE connection error: ${err.type}`);
-            // Give it a moment to reconnect before giving up
-            // readyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSED
             setTimeout(() => {
                 if (!resolved && es.readyState === 2) {
                     resolved = true;

@@ -1,6 +1,6 @@
 # Yaffle Outputs Action
 
-Fetch Terraform outputs from a Yaffle preview for use in CI/CD pipelines.
+Fetch Terraform outputs from a Yaffle environment for use in CI/CD pipelines. Works with both PR previews (transient environments) and named environments (like `main`).
 
 ## How it works
 
@@ -38,11 +38,18 @@ This means:
 | `api-url` | Yaffle API base URL | No | `https://api.yaffle.dev` |
 | `org` | Organization/owner name | No | Repository owner |
 | `repo` | Repository name | No | Current repository |
-| `pr-number` | PR number to get outputs for | No | Current PR |
+| `environment` | Environment name (e.g., `main`, `prvw-42`) | No | Auto-detected |
+| `pr-number` | PR number (sets environment to `prvw-{n}`) | No | Current PR |
 | `workspace` | Workspace path | No | `.` |
 | `token` | GitHub token for authentication | No | `${{ github.token }}` |
 | `wait` | Wait for preview to be ready | No | `false` |
 | `wait-timeout` | Timeout in seconds when waiting | No | `300` |
+
+The environment is automatically detected from:
+1. Explicit `environment` input
+2. `pr-number` input (becomes `prvw-{n}`)
+3. PR context from `pull_request` events
+4. Branch name from `push` events (e.g., `refs/heads/main` → `main`)
 
 ## Outputs
 
@@ -122,4 +129,24 @@ jobs:
 
       - run: |
           echo '${{ steps.infra.outputs.outputs-json }}' | jq '.tags.value'
+```
+
+### Production deploy (main branch)
+
+```yaml
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: yaffle-dot-dev/outputs-action@v1
+        id: infra
+        with:
+          wait: true
+          # Environment auto-detected as 'main' from push event
+
+      - run: echo "Deploying to ${{ steps.infra.outputs.site_url }}"
 ```

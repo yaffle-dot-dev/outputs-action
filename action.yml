@@ -20,6 +20,9 @@ inputs:
   pr-number:
     description: "PR number to get outputs for (defaults to current PR)"
     required: false
+  environment:
+    description: "Environment name (e.g., 'main', 'prvw-42'). Defaults to current PR or branch."
+    required: false
   workspace:
     description: "Workspace path (defaults to root '.')"
     required: false

@@ -30,34 +30,49 @@ async function run(): Promise<void> {
     const wait = core.getInput("wait") === "true"
     const waitTimeout = parseInt(core.getInput("wait-timeout") || "300", 10)
 
-    // Determine org, repo, and PR number
+    // Determine org, repo, and environment
     const context = github.context
     const org = core.getInput("org") || context.repo.owner
     const repo = core.getInput("repo") || context.repo.repo
+    let environment = core.getInput("environment")
     let prNumber = parseInt(core.getInput("pr-number") || "0", 10)
 
-    // Try to get PR number from context if not provided
-    if (!prNumber) {
-      if (context.payload.pull_request) {
+    // Determine environment from context if not provided
+    if (!environment) {
+      if (prNumber) {
+        // PR number provided explicitly
+        environment = `prvw-${prNumber}`
+      } else if (context.payload.pull_request) {
+        // Running in PR context
         prNumber = context.payload.pull_request.number
+        environment = `prvw-${prNumber}`
       } else if (context.payload.issue?.pull_request) {
+        // Running in issue context with PR
         prNumber = context.payload.issue.number
+        environment = `prvw-${prNumber}`
+      } else if (context.ref) {
+        // Running on a branch (e.g., push to main)
+        // Extract branch name from refs/heads/main -> main
+        const refMatch = context.ref.match(/^refs\/heads\/(.+)$/)
+        if (refMatch) {
+          environment = refMatch[1]
+        }
       }
     }
 
-    if (!prNumber) {
+    if (!environment) {
       throw new Error(
-        "Could not determine PR number. Please provide pr-number input or run in a pull_request context."
+        "Could not determine environment. Please provide environment, pr-number input, or run in a pull_request/push context."
       )
     }
 
-    core.info(`Fetching outputs for ${org}/${repo}#${prNumber} workspace=${workspace}`)
+    core.info(`Fetching outputs for ${org}/${repo} environment=${environment} workspace=${workspace}`)
 
     // Find the preview
-    const preview = await findPreview(apiUrl, token, org, repo, prNumber, workspace)
+    const preview = await findPreview(apiUrl, token, org, repo, environment, workspace)
 
     if (!preview) {
-      throw new Error(`No preview found for ${org}/${repo}#${prNumber} workspace=${workspace}`)
+      throw new Error(`No preview found for ${org}/${repo} environment=${environment} workspace=${workspace}`)
     }
 
     core.info(`Found preview ${preview.id} with status: ${preview.status}`)
@@ -115,10 +130,10 @@ async function findPreview(
   token: string,
   org: string,
   repo: string,
-  prNumber: number,
+  environment: string,
   workspace: string
 ): Promise<Preview | null> {
-  const url = `${apiUrl}/api/previews?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&pr_number=${prNumber}`
+  const url = `${apiUrl}/api/previews?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}&environment=${encodeURIComponent(environment)}`
 
   const response = await fetch(url, {
     headers: {
