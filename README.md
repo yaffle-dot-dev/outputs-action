@@ -35,7 +35,7 @@ This means:
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `api-url` | Yaffle API base URL | No | `https://api.yaffle.dev` |
+| `api-url` | Yaffle API base URL (no trailing `/api`) | No | `https://api.yaffle.dev` |
 | `org` | Organization/owner name | No | Repository owner |
 | `repo` | Repository name | No | Current repository |
 | `environment` | Environment name (e.g., `main`, `prvw-42`) | No | Auto-detected |
