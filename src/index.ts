@@ -32,6 +32,43 @@ interface TerraformOutput {
   sensitive?: boolean
 }
 
+function isTransientEnvironmentFetchError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes("Failed to fetch environment: 404")
+    || message.includes("Failed to fetch environment: 500")
+    || message.includes("Environment not found:")
+}
+
+async function waitForEnvironmentAvailability(
+  apiUrl: string,
+  token: string,
+  org: string,
+  repo: string,
+  environment: string,
+  headSha: string,
+  timeoutSeconds: number,
+): Promise<EnvironmentSnapshot> {
+  const timeoutAt = Date.now() + (timeoutSeconds * 1000)
+  let attempt = 0
+
+  while (Date.now() < timeoutAt) {
+    attempt += 1
+    try {
+      return await fetchEnvironment(apiUrl, token, org, repo, environment, headSha)
+    } catch (error) {
+      if (!isTransientEnvironmentFetchError(error)) {
+        throw error
+      }
+
+      const message = error instanceof Error ? error.message : String(error)
+      core.info(`Environment not ready yet (attempt ${attempt}): ${message}`)
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+    }
+  }
+
+  throw new Error(`Environment did not become available within ${timeoutSeconds}s`)
+}
+
 function normalizeToken(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed) {
@@ -130,7 +167,9 @@ async function run(): Promise<void> {
       )
     }
 
-    const snapshot = await fetchEnvironment(apiUrl, token, org, repo, environment, headSha)
+    const snapshot = wait
+      ? await waitForEnvironmentAvailability(apiUrl, token, org, repo, environment, headSha, waitTimeout)
+      : await fetchEnvironment(apiUrl, token, org, repo, environment, headSha)
     const workspaceDeployment = findWorkspaceDeployment(snapshot, workspace)
     if (!workspaceDeployment) {
       throw new Error(`No workspace deployment found for ${org}/${repo} environment=${environment} workspace=${workspace}`)
