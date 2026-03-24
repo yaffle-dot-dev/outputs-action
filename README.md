@@ -41,9 +41,12 @@ This means:
 | `environment` | Environment name (e.g., `main`, `prvw-42`) | No | Auto-detected |
 | `pr-number` | PR number (sets environment to `prvw-{n}`) | No | Current PR |
 | `workspace` | Workspace path | No | `.` |
+| `head-sha` | Commit SHA to scope lookup/stream | No | Workflow SHA |
 | `token` | Yaffle API token for authentication | No | `YAFFLE_API_TOKEN` env var or empty |
 | `wait` | Wait for preview to be ready | No | `false` |
 | `wait-timeout` | Timeout in seconds when waiting | No | `300` |
+
+`token` must be a Yaffle API key (`yfl_...`). If your secret is JSON, use `{ "token": "yfl_..." }`.
 
 The environment is automatically detected from:
 1. Explicit `environment` input

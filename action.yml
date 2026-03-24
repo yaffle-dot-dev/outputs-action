@@ -27,6 +27,10 @@ inputs:
     description: "Workspace path (defaults to root '.')"
     required: false
     default: "."
+  head-sha:
+    description: "Commit SHA to scope environment lookup/stream (defaults to workflow SHA)"
+    required: false
+    default: ""
   token:
     description: "Yaffle API token for authentication"
     required: false
