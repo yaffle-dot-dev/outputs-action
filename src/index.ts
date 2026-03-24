@@ -25,7 +25,7 @@ interface StreamUpdate {
 async function run(): Promise<void> {
   try {
     const apiUrl = core.getInput("api-url")
-    const token = core.getInput("token")
+    const token = core.getInput("token") || process.env.YAFFLE_API_TOKEN || ""
     const workspace = core.getInput("workspace") || "."
     const wait = core.getInput("wait") === "true"
     const waitTimeout = parseInt(core.getInput("wait-timeout") || "300", 10)
@@ -67,6 +67,10 @@ async function run(): Promise<void> {
     }
 
     core.info(`Fetching outputs for ${org}/${repo} environment=${environment} workspace=${workspace}`)
+
+    if (!token) {
+      throw new Error("No Yaffle API token provided. Set the token input or YAFFLE_API_TOKEN env var.")
+    }
 
     // Find the preview
     const preview = await findPreview(apiUrl, token, org, repo, environment, workspace)

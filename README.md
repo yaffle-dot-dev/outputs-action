@@ -41,7 +41,7 @@ This means:
 | `environment` | Environment name (e.g., `main`, `prvw-42`) | No | Auto-detected |
 | `pr-number` | PR number (sets environment to `prvw-{n}`) | No | Current PR |
 | `workspace` | Workspace path | No | `.` |
-| `token` | GitHub token for authentication | No | `${{ github.token }}` |
+| `token` | Yaffle API token for authentication | No | `YAFFLE_API_TOKEN` env var or empty |
 | `wait` | Wait for preview to be ready | No | `false` |
 | `wait-timeout` | Timeout in seconds when waiting | No | `300` |
 

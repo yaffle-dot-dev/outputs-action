@@ -28,9 +28,9 @@ inputs:
     required: false
     default: "."
   token:
-    description: "GitHub token for authentication (defaults to GITHUB_TOKEN)"
+    description: "Yaffle API token for authentication"
     required: false
-    default: ${{ github.token }}
+    default: ""
   wait:
     description: "Wait for preview to be ready (true/false)"
     required: false
