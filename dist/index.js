@@ -29964,6 +29964,31 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(7484));
 const github = __importStar(__nccwpck_require__(3228));
 const eventsource_1 = __nccwpck_require__(5561);
+function isTransientEnvironmentFetchError(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes("Failed to fetch environment: 404")
+        || message.includes("Failed to fetch environment: 500")
+        || message.includes("Environment not found:");
+}
+async function waitForEnvironmentAvailability(apiUrl, token, org, repo, environment, headSha, timeoutSeconds) {
+    const timeoutAt = Date.now() + (timeoutSeconds * 1000);
+    let attempt = 0;
+    while (Date.now() < timeoutAt) {
+        attempt += 1;
+        try {
+            return await fetchEnvironment(apiUrl, token, org, repo, environment, headSha);
+        }
+        catch (error) {
+            if (!isTransientEnvironmentFetchError(error)) {
+                throw error;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            core.info(`Environment not ready yet (attempt ${attempt}): ${message}`);
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+    }
+    throw new Error(`Environment did not become available within ${timeoutSeconds}s`);
+}
 function normalizeToken(raw) {
     const trimmed = raw.trim();
     if (!trimmed) {
@@ -30051,7 +30076,9 @@ async function run() {
             throw new Error("Yaffle API token must look like a Better Auth API key (prefix 'yfl_'). "
                 + "If loading from Secrets Manager, store the raw key string or JSON with {\"token\":\"yfl_...\"}.");
         }
-        const snapshot = await fetchEnvironment(apiUrl, token, org, repo, environment, headSha);
+        const snapshot = wait
+            ? await waitForEnvironmentAvailability(apiUrl, token, org, repo, environment, headSha, waitTimeout)
+            : await fetchEnvironment(apiUrl, token, org, repo, environment, headSha);
         const workspaceDeployment = findWorkspaceDeployment(snapshot, workspace);
         if (!workspaceDeployment) {
             throw new Error(`No workspace deployment found for ${org}/${repo} environment=${environment} workspace=${workspace}`);

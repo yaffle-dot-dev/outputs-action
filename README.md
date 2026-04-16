@@ -1,6 +1,10 @@
 # Yaffle Outputs Action
 
+> Source of truth: this action lives in the main Yaffle monorepo. The standalone public repo is a one-way publish of this directory, and changes should land in the monorepo first.
+
 Fetch Terraform outputs from a Yaffle environment for use in CI/CD pipelines. Works with both PR previews (transient environments) and named environments (like `main`).
+
+The standalone repo maintains a rolling `edge` tag/release on every successful push to `main`.
 
 ## How it works
 
