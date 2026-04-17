@@ -1,0 +1,71 @@
+name: Edge
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  publish-edge:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out successful commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Skip stale workflow runs
+        id: guard
+        run: |
+          git fetch origin main --depth=1
+          current_sha="$(git rev-parse origin/main)"
+
+          if [ "$current_sha" != "${{ github.event.workflow_run.head_sha }}" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping stale edge publish for ${{ github.event.workflow_run.head_sha }}; main is ${current_sha}."
+            exit 0
+          fi
+
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git identity
+        if: steps.guard.outputs.publish == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Move edge tag
+        if: steps.guard.outputs.publish == 'true'
+        run: |
+          git tag -f edge "${{ github.event.workflow_run.head_sha }}"
+          git push origin refs/tags/edge --force
+
+      - name: Create or update edge release
+        if: steps.guard.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES=$(cat <<EOF
+          Rolling build from main.
+
+          - commit: `${{ github.event.workflow_run.head_sha }}`
+          - workflow run: ${{ github.event.workflow_run.html_url }}
+
+          Use this action as `yaffle-dot-dev/outputs-action@edge`.
+          EOF
+          )
+
+          if gh release view edge >/dev/null 2>&1; then
+            gh release edit edge --prerelease --title "edge" --notes "$NOTES"
+          else
+            gh release create edge --prerelease --title "edge" --notes "$NOTES"
+          fi
