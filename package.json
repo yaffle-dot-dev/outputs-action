@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "GitHub Action to fetch Terraform outputs from Yaffle previews",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yaffle-dot-dev/outputs-action.git"
+  },
+  "homepage": "https://github.com/yaffle-dot-dev/outputs-action",
+  "bugs": {
+    "url": "https://github.com/yaffle-dot-dev/outputs-action/issues"
+  },
   "scripts": {
     "build": "ncc build src/index.ts -o dist",
     "typecheck": "tsc --noEmit"
@@ -24,13 +32,5 @@
     "@types/node": "^20.11.0",
     "@vercel/ncc": "^0.38.1",
     "typescript": "^5.3.3"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/yaffle-dot-dev/outputs-action.git"
-  },
-  "homepage": "https://github.com/yaffle-dot-dev/outputs-action",
-  "bugs": {
-    "url": "https://github.com/yaffle-dot-dev/outputs-action/issues"
   }
 }
