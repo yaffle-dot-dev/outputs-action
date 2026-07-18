@@ -29922,6 +29922,51 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 2678:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.resolveEnvironment = resolveEnvironment;
+function prEnvironment(prNumber) {
+    if (prNumber === undefined || !Number.isSafeInteger(prNumber) || prNumber <= 0) {
+        return undefined;
+    }
+    return `pr-${prNumber}`;
+}
+function resolveEnvironment(input) {
+    let explicitPrEnvironment;
+    if (input.prNumber) {
+        explicitPrEnvironment = /^[1-9]\d*$/.test(input.prNumber)
+            ? prEnvironment(Number(input.prNumber))
+            : undefined;
+        if (!explicitPrEnvironment) {
+            throw new Error("Invalid pr-number input: expected a positive safe integer");
+        }
+    }
+    if (input.environment) {
+        return input.environment;
+    }
+    if (explicitPrEnvironment) {
+        return explicitPrEnvironment;
+    }
+    const pullRequestEnvironment = prEnvironment(input.pullRequestNumber);
+    if (pullRequestEnvironment) {
+        return pullRequestEnvironment;
+    }
+    if (input.issueIsPullRequest) {
+        const issueEnvironment = prEnvironment(input.issueNumber);
+        if (issueEnvironment) {
+            return issueEnvironment;
+        }
+    }
+    return input.ref.match(/^refs\/heads\/(.+)$/)?.[1];
+}
+
+
+/***/ }),
+
 /***/ 9407:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -29964,6 +30009,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(7484));
 const github = __importStar(__nccwpck_require__(3228));
 const eventsource_1 = __nccwpck_require__(5561);
+const environment_1 = __nccwpck_require__(2678);
 function isTransientEnvironmentFetchError(error) {
     const message = error instanceof Error ? error.message : String(error);
     return message.includes("Failed to fetch environment: 404")
@@ -30034,37 +30080,18 @@ async function run() {
         const context = github.context;
         const org = core.getInput("org") || context.repo.owner;
         const repo = core.getInput("repo") || context.repo.repo;
-        let environment = core.getInput("environment");
-        let prNumber = parseInt(core.getInput("pr-number") || "0", 10);
+        const environment = (0, environment_1.resolveEnvironment)({
+            environment: core.getInput("environment"),
+            prNumber: core.getInput("pr-number"),
+            pullRequestNumber: context.payload.pull_request?.number,
+            issueNumber: context.payload.issue?.number,
+            issueIsPullRequest: !!context.payload.issue?.pull_request,
+            ref: context.ref,
+        });
         const contextHeadSha = context.payload.pull_request?.head?.sha
             || context.sha
             || "";
         const headSha = (headShaInput || contextHeadSha).trim();
-        // Determine environment from context if not provided
-        if (!environment) {
-            if (prNumber) {
-                // PR number provided explicitly
-                environment = `prvw-${prNumber}`;
-            }
-            else if (context.payload.pull_request) {
-                // Running in PR context
-                prNumber = context.payload.pull_request.number;
-                environment = `prvw-${prNumber}`;
-            }
-            else if (context.payload.issue?.pull_request) {
-                // Running in issue context with PR
-                prNumber = context.payload.issue.number;
-                environment = `prvw-${prNumber}`;
-            }
-            else if (context.ref) {
-                // Running on a branch (e.g., push to main)
-                // Extract branch name from refs/heads/main -> main
-                const refMatch = context.ref.match(/^refs\/heads\/(.+)$/);
-                if (refMatch) {
-                    environment = refMatch[1];
-                }
-            }
-        }
         if (!environment) {
             throw new Error("Could not determine environment. Please provide environment, pr-number input, or run in a pull_request/push context.");
         }

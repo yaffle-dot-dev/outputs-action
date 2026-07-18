@@ -42,8 +42,8 @@ This means:
 | `api-url` | Yaffle API base URL (no trailing `/api`) | No | `https://api.yaffle.dev` |
 | `org` | Organization/owner name | No | Repository owner |
 | `repo` | Repository name | No | Current repository |
-| `environment` | Environment name (e.g., `main`, `prvw-42`) | No | Auto-detected |
-| `pr-number` | PR number (sets environment to `prvw-{n}`) | No | Current PR |
+| `environment` | Environment name (e.g., `main`, `pr-42`) | No | Auto-detected |
+| `pr-number` | Positive PR number (sets environment to `pr-{number}`) | No | Current PR |
 | `workspace` | Workspace path | No | `.` |
 | `head-sha` | Commit SHA to scope lookup/stream | No | Workflow SHA |
 | `token` | Yaffle API token for authentication | No | `YAFFLE_API_TOKEN` env var or empty |
@@ -54,9 +54,10 @@ This means:
 
 The environment is automatically detected from:
 1. Explicit `environment` input
-2. `pr-number` input (becomes `prvw-{n}`)
+2. Valid `pr-number` input (becomes `pr-{number}`)
 3. PR context from `pull_request` events
-4. Branch name from `push` events (e.g., `refs/heads/main` → `main`)
+4. PR issue context (for events such as `issue_comment`)
+5. Branch name from `push` events (e.g., `refs/heads/main` → `main`)
 
 ## Outputs
 
@@ -66,6 +67,11 @@ The environment is automatically detected from:
 | `preview-status` | The preview status |
 | `outputs-json` | All outputs as a JSON string |
 | `<output-name>` | Each Terraform output is set as a separate output |
+
+The current Action exposes the API's raw output map through `outputs-json` and individual
+step outputs. Scalar secrets may be masked in logs, but structured sensitive values are
+not reliably masked and all step outputs remain available to later workflow steps. Do not
+fetch or forward sensitive values with this Action; publish secret references instead.
 
 ## Examples
 

@@ -2,6 +2,8 @@ import * as core from "@actions/core"
 import * as github from "@actions/github"
 import { EventSource } from "eventsource"
 
+import { resolveEnvironment } from "./environment"
+
 interface WorkspaceDeployment {
   id: string
   workspacePath: string
@@ -118,35 +120,18 @@ async function run(): Promise<void> {
     const context = github.context
     const org = core.getInput("org") || context.repo.owner
     const repo = core.getInput("repo") || context.repo.repo
-    let environment = core.getInput("environment")
-    let prNumber = parseInt(core.getInput("pr-number") || "0", 10)
+    const environment = resolveEnvironment({
+      environment: core.getInput("environment"),
+      prNumber: core.getInput("pr-number"),
+      pullRequestNumber: context.payload.pull_request?.number,
+      issueNumber: context.payload.issue?.number,
+      issueIsPullRequest: !!context.payload.issue?.pull_request,
+      ref: context.ref,
+    })
     const contextHeadSha = context.payload.pull_request?.head?.sha
       || context.sha
       || ""
     const headSha = (headShaInput || contextHeadSha).trim()
-
-    // Determine environment from context if not provided
-    if (!environment) {
-      if (prNumber) {
-        // PR number provided explicitly
-        environment = `prvw-${prNumber}`
-      } else if (context.payload.pull_request) {
-        // Running in PR context
-        prNumber = context.payload.pull_request.number
-        environment = `prvw-${prNumber}`
-      } else if (context.payload.issue?.pull_request) {
-        // Running in issue context with PR
-        prNumber = context.payload.issue.number
-        environment = `prvw-${prNumber}`
-      } else if (context.ref) {
-        // Running on a branch (e.g., push to main)
-        // Extract branch name from refs/heads/main -> main
-        const refMatch = context.ref.match(/^refs\/heads\/(.+)$/)
-        if (refMatch) {
-          environment = refMatch[1]
-        }
-      }
-    }
 
     if (!environment) {
       throw new Error(

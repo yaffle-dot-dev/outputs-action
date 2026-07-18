@@ -18,10 +18,10 @@ inputs:
     description: "Repository name (defaults to current repository name)"
     required: false
   pr-number:
-    description: "PR number to get outputs for (defaults to current PR)"
+    description: "Positive PR number to get outputs for as pr-{number} (defaults to current PR)"
     required: false
   environment:
-    description: "Environment name (e.g., 'main', 'prvw-42'). Defaults to current PR or branch."
+    description: "Environment name (e.g., 'main', 'pr-42'). Defaults to current PR or branch."
     required: false
   workspace:
     description: "Workspace path (defaults to root '.')"
