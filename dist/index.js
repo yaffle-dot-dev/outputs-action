@@ -30010,14 +30010,15 @@ const core = __importStar(__nccwpck_require__(7484));
 const github = __importStar(__nccwpck_require__(3228));
 const eventsource_1 = __nccwpck_require__(5561);
 const environment_1 = __nccwpck_require__(2678);
+const output_publishing_1 = __nccwpck_require__(7350);
 function isTransientEnvironmentFetchError(error) {
     const message = error instanceof Error ? error.message : String(error);
-    return message.includes("Failed to fetch environment: 404")
-        || message.includes("Failed to fetch environment: 500")
-        || message.includes("Environment not found:");
+    return (message.includes("Failed to fetch environment: 404") ||
+        message.includes("Failed to fetch environment: 500") ||
+        message.includes("Environment not found:"));
 }
 async function waitForEnvironmentAvailability(apiUrl, token, org, repo, environment, headSha, timeoutSeconds) {
-    const timeoutAt = Date.now() + (timeoutSeconds * 1000);
+    const timeoutAt = Date.now() + timeoutSeconds * 1000;
     let attempt = 0;
     while (Date.now() < timeoutAt) {
         attempt += 1;
@@ -30044,7 +30045,7 @@ function normalizeToken(raw) {
     if (withoutBearer) {
         return withoutBearer[1].trim();
     }
-    if (trimmed.startsWith("{") || trimmed.startsWith("\"")) {
+    if (trimmed.startsWith("{") || trimmed.startsWith('"')) {
         try {
             const parsed = JSON.parse(trimmed);
             if (typeof parsed === "string") {
@@ -30052,10 +30053,7 @@ function normalizeToken(raw) {
             }
             if (parsed && typeof parsed === "object") {
                 const obj = parsed;
-                const candidate = obj.token
-                    ?? obj.apiToken
-                    ?? obj.yaffleApiToken
-                    ?? obj.YAFFLE_API_TOKEN;
+                const candidate = obj.token ?? obj.apiToken ?? obj.yaffleApiToken ?? obj.YAFFLE_API_TOKEN;
                 if (typeof candidate === "string") {
                     return candidate.trim();
                 }
@@ -30088,9 +30086,7 @@ async function run() {
             issueIsPullRequest: !!context.payload.issue?.pull_request,
             ref: context.ref,
         });
-        const contextHeadSha = context.payload.pull_request?.head?.sha
-            || context.sha
-            || "";
+        const contextHeadSha = context.payload.pull_request?.head?.sha || context.sha || "";
         const headSha = (headShaInput || contextHeadSha).trim();
         if (!environment) {
             throw new Error("Could not determine environment. Please provide environment, pr-number input, or run in a pull_request/push context.");
@@ -30100,8 +30096,8 @@ async function run() {
             throw new Error("No Yaffle API token provided. Set the token input or YAFFLE_API_TOKEN env var.");
         }
         if (!token.startsWith("yfl_")) {
-            throw new Error("Yaffle API token must look like a Better Auth API key (prefix 'yfl_'). "
-                + "If loading from Secrets Manager, store the raw key string or JSON with {\"token\":\"yfl_...\"}.");
+            throw new Error("Yaffle API token must look like a Better Auth API key (prefix 'yfl_'). " +
+                'If loading from Secrets Manager, store the raw key string or JSON with {"token":"yfl_..."}.');
         }
         const snapshot = wait
             ? await waitForEnvironmentAvailability(apiUrl, token, org, repo, environment, headSha, waitTimeout)
@@ -30136,21 +30132,11 @@ async function run() {
             core.setOutput("outputs-json", "{}");
             return;
         }
-        core.setOutput("outputs-json", JSON.stringify(outputs));
-        // Set each output as a separate action output
-        for (const [name, output] of Object.entries(outputs)) {
-            const tfOutput = output;
-            if (tfOutput.sensitive) {
-                core.setSecret(String(tfOutput.value));
-                core.setOutput(name, tfOutput.value);
-            }
-            else {
-                const value = typeof tfOutput.value === "object"
-                    ? JSON.stringify(tfOutput.value)
-                    : String(tfOutput.value);
-                core.setOutput(name, value);
-                core.info(`Output ${name} = ${value}`);
-            }
+        const prepared = (0, output_publishing_1.prepareActionOutputs)(outputs);
+        core.setOutput("outputs-json", prepared.outputsJson);
+        for (const entry of prepared.entries) {
+            core.setOutput(entry.name, entry.value);
+            core.info(`Output ${entry.name} = ${entry.value}`);
         }
         core.info("Successfully fetched all outputs");
     }
@@ -30164,8 +30150,11 @@ async function run() {
     }
 }
 async function fetchEnvironment(apiUrl, token, org, repo, environment, headSha) {
-    const query = headSha ? `?head_sha=${encodeURIComponent(headSha)}` : "";
-    const url = `${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}${query}`;
+    const query = new URLSearchParams({ output_audience: "automation" });
+    if (headSha) {
+        query.set("head_sha", headSha);
+    }
+    const url = `${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}?${query.toString()}`;
     const response = await fetch(url, {
         headers: {
             Authorization: `Bearer ${token}`,
@@ -30179,7 +30168,7 @@ async function fetchEnvironment(apiUrl, token, org, repo, environment, headSha) 
         const text = await response.text();
         throw new Error(`Failed to fetch environment: ${response.status} ${text}`);
     }
-    const data = await response.json();
+    const data = (await response.json());
     return data.data;
 }
 function findWorkspaceDeployment(snapshot, workspace) {
@@ -30190,7 +30179,7 @@ function findWorkspaceDeployment(snapshot, workspace) {
     return targetWorkspace;
 }
 async function waitForReadyPolling(apiUrl, token, org, repo, environment, headSha, workspace, timeoutSeconds) {
-    const timeoutAt = Date.now() + (timeoutSeconds * 1000);
+    const timeoutAt = Date.now() + timeoutSeconds * 1000;
     let lastLoggedStatus = null;
     while (Date.now() < timeoutAt) {
         const snapshot = await fetchEnvironment(apiUrl, token, org, repo, environment, headSha);
@@ -30219,13 +30208,14 @@ async function waitForReadyPolling(apiUrl, token, org, repo, environment, headSh
 async function waitForReadySSE(apiUrl, token, org, repo, environment, headSha, workspaceDeploymentId, workspace, timeoutSeconds) {
     return await new Promise((resolve, reject) => {
         const timeoutMs = timeoutSeconds * 1000;
-        const streamQuery = new URLSearchParams({ token });
+        const streamQuery = new URLSearchParams();
+        streamQuery.set("output_audience", "automation");
         if (headSha) {
             streamQuery.set("head_sha", headSha);
         }
         const streamUrl = `${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}/stream?${streamQuery.toString()}`;
         core.info(`Connecting to SSE stream: ${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}/stream`);
-        const es = new eventsource_1.EventSource(streamUrl);
+        const es = createAuthenticatedEventSource(streamUrl, token);
         let settled = false;
         let lastLoggedStatus = null;
         const startedAt = Date.now();
@@ -30290,8 +30280,8 @@ async function waitForReadySSE(apiUrl, token, org, repo, environment, headSha, w
                     if (message.includes("Failed to fetch environment: 401")) {
                         consecutiveAuthFailures += 1;
                         if (consecutiveAuthFailures >= 6) {
-                            finish(() => reject(new Error("Lost API authentication while waiting for deployment status (received repeated 401 responses). "
-                                + "Check YAFFLE_API_TOKEN validity and control-plane auth health.")));
+                            finish(() => reject(new Error("Lost API authentication while waiting for deployment status (received repeated 401 responses). " +
+                                "Check YAFFLE_API_TOKEN validity and control-plane auth health.")));
                             return;
                         }
                         if (consecutiveAuthFailures === 1) {
@@ -30311,8 +30301,8 @@ async function waitForReadySSE(apiUrl, token, org, repo, environment, headSha, w
             try {
                 const payload = JSON.parse(event.data);
                 const workspaces = payload.data?.workspaces || [];
-                const targetWorkspace = workspaces.find((item) => item.preview.id === workspaceDeploymentId)
-                    ?? workspaces.find((item) => item.preview.workspacePath === workspace);
+                const targetWorkspace = workspaces.find((item) => item.preview.id === workspaceDeploymentId) ??
+                    workspaces.find((item) => item.preview.workspacePath === workspace);
                 if (!targetWorkspace) {
                     return;
                 }
@@ -30353,7 +30343,48 @@ async function waitForReadySSE(apiUrl, token, org, repo, environment, headSha, w
         };
     });
 }
-run();
+function createAuthenticatedEventSource(url, token) {
+    return new eventsource_1.EventSource(url, {
+        fetch: (input, init) => {
+            const headers = new Headers(init?.headers);
+            headers.set("Authorization", `Bearer ${token}`);
+            return fetch(input, { ...init, headers });
+        },
+    });
+}
+void run();
+
+
+/***/ }),
+
+/***/ 7350:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.prepareActionOutputs = prepareActionOutputs;
+function formatTerraformOutput(value) {
+    if (typeof value === "string")
+        return value;
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+        return `${value}`;
+    }
+    return JSON.stringify(value) ?? "";
+}
+function prepareActionOutputs(outputs) {
+    const entries = [];
+    for (const [name, output] of Object.entries(outputs)) {
+        if (output.sensitive === true) {
+            throw new Error(`Cannot publish sensitive Terraform output through the Outputs Action: ${name}. Store the secret in a secret manager and publish only its ARN or identifier.`);
+        }
+        entries.push({ name, value: formatTerraformOutput(output.value) });
+    }
+    return {
+        outputsJson: JSON.stringify(outputs),
+        entries,
+    };
+}
 
 
 /***/ }),

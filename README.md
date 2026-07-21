@@ -11,6 +11,7 @@ The standalone repo maintains a rolling `edge` tag/release on every successful p
 When you set `wait: true`, the action uses **Server-Sent Events (SSE)** to efficiently wait for your preview to become ready. Instead of polling the API every few seconds, it opens a persistent connection and waits for real-time status updates from Yaffle.
 
 This means:
+
 - **Instant response** - as soon as your preview is ready, the action continues
 - **No wasted API calls** - the connection just hangs until there's news
 - **Efficient** - almost zero CPU/network usage while waiting
@@ -37,22 +38,23 @@ This means:
 
 ## Inputs
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `api-url` | Yaffle API base URL (no trailing `/api`) | No | `https://api.yaffle.dev` |
-| `org` | Organization/owner name | No | Repository owner |
-| `repo` | Repository name | No | Current repository |
-| `environment` | Environment name (e.g., `main`, `pr-42`) | No | Auto-detected |
-| `pr-number` | Positive PR number (sets environment to `pr-{number}`) | No | Current PR |
-| `workspace` | Workspace path | No | `.` |
-| `head-sha` | Commit SHA to scope lookup/stream | No | Workflow SHA |
-| `token` | Yaffle API token for authentication | No | `YAFFLE_API_TOKEN` env var or empty |
-| `wait` | Wait for preview to be ready | No | `false` |
-| `wait-timeout` | Timeout in seconds when waiting | No | `300` |
+| Input          | Description                                            | Required | Default                             |
+| -------------- | ------------------------------------------------------ | -------- | ----------------------------------- |
+| `api-url`      | Yaffle API base URL (no trailing `/api`)               | No       | `https://api.yaffle.dev`            |
+| `org`          | Organization/owner name                                | No       | Repository owner                    |
+| `repo`         | Repository name                                        | No       | Current repository                  |
+| `environment`  | Environment name (e.g., `main`, `pr-42`)               | No       | Auto-detected                       |
+| `pr-number`    | Positive PR number (sets environment to `pr-{number}`) | No       | Current PR                          |
+| `workspace`    | Workspace path                                         | No       | `.`                                 |
+| `head-sha`     | Commit SHA to scope lookup/stream                      | No       | Workflow SHA                        |
+| `token`        | Yaffle API token for authentication                    | No       | `YAFFLE_API_TOKEN` env var or empty |
+| `wait`         | Wait for preview to be ready                           | No       | `false`                             |
+| `wait-timeout` | Timeout in seconds when waiting                        | No       | `300`                               |
 
 `token` must be a Yaffle API key (`yfl_...`). If your secret is JSON, use `{ "token": "yfl_..." }`.
 
 The environment is automatically detected from:
+
 1. Explicit `environment` input
 2. Valid `pr-number` input (becomes `pr-{number}`)
 3. PR context from `pull_request` events
@@ -61,12 +63,12 @@ The environment is automatically detected from:
 
 ## Outputs
 
-| Output | Description |
-|--------|-------------|
-| `preview-id` | The Yaffle preview ID |
-| `preview-status` | The preview status |
-| `outputs-json` | All outputs as a JSON string |
-| `<output-name>` | Each Terraform output is set as a separate output |
+| Output           | Description                                       |
+| ---------------- | ------------------------------------------------- |
+| `preview-id`     | The Yaffle preview ID                             |
+| `preview-status` | The preview status                                |
+| `outputs-json`   | All outputs as a JSON string                      |
+| `<output-name>`  | Each Terraform output is set as a separate output |
 
 The current Action exposes the API's raw output map through `outputs-json` and individual
 step outputs. Scalar secrets may be masked in logs, but structured sensitive values are
@@ -99,7 +101,7 @@ jobs:
         id: infra
         with:
           wait: true
-          wait-timeout: 600  # 10 minutes
+          wait-timeout: 600 # 10 minutes
 
       - run: |
           aws ecs update-service \

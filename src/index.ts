@@ -3,6 +3,7 @@ import * as github from "@actions/github"
 import { EventSource } from "eventsource"
 
 import { resolveEnvironment } from "./environment"
+import { prepareActionOutputs, type TerraformOutput } from "./output-publishing"
 
 interface WorkspaceDeployment {
   id: string
@@ -28,17 +29,13 @@ interface EnvironmentStreamUpdate {
   data: EnvironmentSnapshot | null
 }
 
-interface TerraformOutput {
-  value: unknown
-  type?: string
-  sensitive?: boolean
-}
-
 function isTransientEnvironmentFetchError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
-  return message.includes("Failed to fetch environment: 404")
-    || message.includes("Failed to fetch environment: 500")
-    || message.includes("Environment not found:")
+  return (
+    message.includes("Failed to fetch environment: 404") ||
+    message.includes("Failed to fetch environment: 500") ||
+    message.includes("Environment not found:")
+  )
 }
 
 async function waitForEnvironmentAvailability(
@@ -50,7 +47,7 @@ async function waitForEnvironmentAvailability(
   headSha: string,
   timeoutSeconds: number,
 ): Promise<EnvironmentSnapshot> {
-  const timeoutAt = Date.now() + (timeoutSeconds * 1000)
+  const timeoutAt = Date.now() + timeoutSeconds * 1000
   let attempt = 0
 
   while (Date.now() < timeoutAt) {
@@ -82,7 +79,7 @@ function normalizeToken(raw: string): string {
     return withoutBearer[1].trim()
   }
 
-  if (trimmed.startsWith("{") || trimmed.startsWith("\"")) {
+  if (trimmed.startsWith("{") || trimmed.startsWith('"')) {
     try {
       const parsed = JSON.parse(trimmed) as unknown
       if (typeof parsed === "string") {
@@ -90,10 +87,7 @@ function normalizeToken(raw: string): string {
       }
       if (parsed && typeof parsed === "object") {
         const obj = parsed as Record<string, unknown>
-        const candidate = obj.token
-          ?? obj.apiToken
-          ?? obj.yaffleApiToken
-          ?? obj.YAFFLE_API_TOKEN
+        const candidate = obj.token ?? obj.apiToken ?? obj.yaffleApiToken ?? obj.YAFFLE_API_TOKEN
         if (typeof candidate === "string") {
           return candidate.trim()
         }
@@ -128,39 +122,53 @@ async function run(): Promise<void> {
       issueIsPullRequest: !!context.payload.issue?.pull_request,
       ref: context.ref,
     })
-    const contextHeadSha = context.payload.pull_request?.head?.sha
-      || context.sha
-      || ""
+    const contextHeadSha = context.payload.pull_request?.head?.sha || context.sha || ""
     const headSha = (headShaInput || contextHeadSha).trim()
 
     if (!environment) {
       throw new Error(
-        "Could not determine environment. Please provide environment, pr-number input, or run in a pull_request/push context."
+        "Could not determine environment. Please provide environment, pr-number input, or run in a pull_request/push context.",
       )
     }
 
-    core.info(`Fetching outputs for ${org}/${repo} environment=${environment} workspace=${workspace}`)
+    core.info(
+      `Fetching outputs for ${org}/${repo} environment=${environment} workspace=${workspace}`,
+    )
 
     if (!token) {
-      throw new Error("No Yaffle API token provided. Set the token input or YAFFLE_API_TOKEN env var.")
+      throw new Error(
+        "No Yaffle API token provided. Set the token input or YAFFLE_API_TOKEN env var.",
+      )
     }
 
     if (!token.startsWith("yfl_")) {
       throw new Error(
-        "Yaffle API token must look like a Better Auth API key (prefix 'yfl_'). "
-        + "If loading from Secrets Manager, store the raw key string or JSON with {\"token\":\"yfl_...\"}."
+        "Yaffle API token must look like a Better Auth API key (prefix 'yfl_'). " +
+          'If loading from Secrets Manager, store the raw key string or JSON with {"token":"yfl_..."}.',
       )
     }
 
     const snapshot = wait
-      ? await waitForEnvironmentAvailability(apiUrl, token, org, repo, environment, headSha, waitTimeout)
+      ? await waitForEnvironmentAvailability(
+          apiUrl,
+          token,
+          org,
+          repo,
+          environment,
+          headSha,
+          waitTimeout,
+        )
       : await fetchEnvironment(apiUrl, token, org, repo, environment, headSha)
     const workspaceDeployment = findWorkspaceDeployment(snapshot, workspace)
     if (!workspaceDeployment) {
-      throw new Error(`No workspace deployment found for ${org}/${repo} environment=${environment} workspace=${workspace}`)
+      throw new Error(
+        `No workspace deployment found for ${org}/${repo} environment=${environment} workspace=${workspace}`,
+      )
     }
 
-    core.info(`Found workspace deployment ${workspaceDeployment.preview.id} with status: ${workspaceDeployment.preview.status}`)
+    core.info(
+      `Found workspace deployment ${workspaceDeployment.preview.id} with status: ${workspaceDeployment.preview.status}`,
+    )
     core.setOutput("preview-id", workspaceDeployment.preview.id)
     core.setOutput("preview-status", workspaceDeployment.preview.status)
 
@@ -168,7 +176,9 @@ async function run(): Promise<void> {
 
     // Wait for workspace deployment to be ready if requested
     if (wait && workspaceDeployment.preview.status !== "ready") {
-      core.info(`Waiting for workspace deployment to be ready via SSE (timeout: ${waitTimeout}s)...`)
+      core.info(
+        `Waiting for workspace deployment to be ready via SSE (timeout: ${waitTimeout}s)...`,
+      )
       let readyWorkspace: EnvironmentWorkspace
       try {
         readyWorkspace = await waitForReadySSE(
@@ -183,7 +193,9 @@ async function run(): Promise<void> {
           waitTimeout,
         )
       } catch (error) {
-        core.warning(`SSE wait failed (${error instanceof Error ? error.message : String(error)}), falling back to polling`)
+        core.warning(
+          `SSE wait failed (${error instanceof Error ? error.message : String(error)}), falling back to polling`,
+        )
         readyWorkspace = await waitForReadyPolling(
           apiUrl,
           token,
@@ -207,21 +219,11 @@ async function run(): Promise<void> {
       return
     }
 
-    core.setOutput("outputs-json", JSON.stringify(outputs))
-
-    // Set each output as a separate action output
-    for (const [name, output] of Object.entries(outputs)) {
-      const tfOutput = output as TerraformOutput
-      if (tfOutput.sensitive) {
-        core.setSecret(String(tfOutput.value))
-        core.setOutput(name, tfOutput.value)
-      } else {
-        const value = typeof tfOutput.value === "object"
-          ? JSON.stringify(tfOutput.value)
-          : String(tfOutput.value)
-        core.setOutput(name, value)
-        core.info(`Output ${name} = ${value}`)
-      }
+    const prepared = prepareActionOutputs(outputs)
+    core.setOutput("outputs-json", prepared.outputsJson)
+    for (const entry of prepared.entries) {
+      core.setOutput(entry.name, entry.value)
+      core.info(`Output ${entry.name} = ${entry.value}`)
     }
 
     core.info("Successfully fetched all outputs")
@@ -242,8 +244,11 @@ async function fetchEnvironment(
   environment: string,
   headSha: string,
 ): Promise<EnvironmentSnapshot> {
-  const query = headSha ? `?head_sha=${encodeURIComponent(headSha)}` : ""
-  const url = `${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}${query}`
+  const query = new URLSearchParams({ output_audience: "automation" })
+  if (headSha) {
+    query.set("head_sha", headSha)
+  }
+  const url = `${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}?${query.toString()}`
 
   const response = await fetch(url, {
     headers: {
@@ -261,7 +266,7 @@ async function fetchEnvironment(
     throw new Error(`Failed to fetch environment: ${response.status} ${text}`)
   }
 
-  const data = await response.json() as { data: EnvironmentSnapshot }
+  const data = (await response.json()) as { data: EnvironmentSnapshot }
   return data.data
 }
 
@@ -269,7 +274,9 @@ function findWorkspaceDeployment(
   snapshot: EnvironmentSnapshot,
   workspace: string,
 ): EnvironmentWorkspace | null {
-  const targetWorkspace = snapshot.workspaces.find((item) => item.preview.workspacePath === workspace)
+  const targetWorkspace = snapshot.workspaces.find(
+    (item) => item.preview.workspacePath === workspace,
+  )
   if (!targetWorkspace) {
     return null
   }
@@ -286,14 +293,16 @@ async function waitForReadyPolling(
   workspace: string,
   timeoutSeconds: number,
 ): Promise<EnvironmentWorkspace> {
-  const timeoutAt = Date.now() + (timeoutSeconds * 1000)
+  const timeoutAt = Date.now() + timeoutSeconds * 1000
   let lastLoggedStatus: string | null = null
 
   while (Date.now() < timeoutAt) {
     const snapshot = await fetchEnvironment(apiUrl, token, org, repo, environment, headSha)
     const workspaceDeployment = findWorkspaceDeployment(snapshot, workspace)
     if (!workspaceDeployment) {
-      throw new Error(`Workspace deployment not found while waiting: ${org}/${repo} environment=${environment} workspace=${workspace}`)
+      throw new Error(
+        `Workspace deployment not found while waiting: ${org}/${repo} environment=${environment} workspace=${workspace}`,
+      )
     }
 
     if (workspaceDeployment.preview.status !== lastLoggedStatus) {
@@ -333,14 +342,17 @@ async function waitForReadySSE(
 ): Promise<EnvironmentWorkspace> {
   return await new Promise((resolve, reject) => {
     const timeoutMs = timeoutSeconds * 1000
-    const streamQuery = new URLSearchParams({ token })
+    const streamQuery = new URLSearchParams()
+    streamQuery.set("output_audience", "automation")
     if (headSha) {
       streamQuery.set("head_sha", headSha)
     }
     const streamUrl = `${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}/stream?${streamQuery.toString()}`
-    core.info(`Connecting to SSE stream: ${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}/stream`)
+    core.info(
+      `Connecting to SSE stream: ${apiUrl}/api/orgs/${encodeURIComponent(org)}/repos/${encodeURIComponent(repo)}/environment/${encodeURIComponent(environment)}/stream`,
+    )
 
-    const es = new EventSource(streamUrl)
+    const es = createAuthenticatedEventSource(streamUrl, token)
     let settled = false
     let lastLoggedStatus: string | null = null
     const startedAt = Date.now()
@@ -357,7 +369,9 @@ async function waitForReadySSE(
     }
 
     const timeout = setTimeout(() => {
-      finish(() => reject(new Error(`Workspace deployment did not become ready within ${timeoutSeconds}s`)))
+      finish(() =>
+        reject(new Error(`Workspace deployment did not become ready within ${timeoutSeconds}s`)),
+      )
     }, timeoutMs)
 
     const revalidate = setInterval(() => {
@@ -378,9 +392,13 @@ async function waitForReadySSE(
 
           if (!workspaceDeployment) {
             if (headSha) {
-              finish(() => reject(new Error(
-                `Workspace deployment disappeared for head_sha=${headSha} (likely superseded by a newer push)`
-              )))
+              finish(() =>
+                reject(
+                  new Error(
+                    `Workspace deployment disappeared for head_sha=${headSha} (likely superseded by a newer push)`,
+                  ),
+                ),
+              )
               return
             }
             return
@@ -415,10 +433,14 @@ async function waitForReadySSE(
           if (message.includes("Failed to fetch environment: 401")) {
             consecutiveAuthFailures += 1
             if (consecutiveAuthFailures >= 6) {
-              finish(() => reject(new Error(
-                "Lost API authentication while waiting for deployment status (received repeated 401 responses). "
-                + "Check YAFFLE_API_TOKEN validity and control-plane auth health."
-              )))
+              finish(() =>
+                reject(
+                  new Error(
+                    "Lost API authentication while waiting for deployment status (received repeated 401 responses). " +
+                      "Check YAFFLE_API_TOKEN validity and control-plane auth health.",
+                  ),
+                ),
+              )
               return
             }
             if (consecutiveAuthFailures === 1) {
@@ -440,8 +462,9 @@ async function waitForReadySSE(
       try {
         const payload = JSON.parse(event.data) as EnvironmentStreamUpdate
         const workspaces = payload.data?.workspaces || []
-        const targetWorkspace = workspaces.find((item) => item.preview.id === workspaceDeploymentId)
-          ?? workspaces.find((item) => item.preview.workspacePath === workspace)
+        const targetWorkspace =
+          workspaces.find((item) => item.preview.id === workspaceDeploymentId) ??
+          workspaces.find((item) => item.preview.workspacePath === workspace)
 
         if (!targetWorkspace) {
           return
@@ -466,7 +489,9 @@ async function waitForReadySSE(
           finish(() => reject(new Error("Workspace deployment was destroyed")))
         }
       } catch (error) {
-        core.warning(`Failed to parse SSE event: ${error instanceof Error ? error.message : String(error)}`)
+        core.warning(
+          `Failed to parse SSE event: ${error instanceof Error ? error.message : String(error)}`,
+        )
       }
     })
 
@@ -490,4 +515,14 @@ async function waitForReadySSE(
   })
 }
 
-run()
+function createAuthenticatedEventSource(url: string, token: string): EventSource {
+  return new EventSource(url, {
+    fetch: (input, init) => {
+      const headers = new Headers(init?.headers)
+      headers.set("Authorization", `Bearer ${token}`)
+      return fetch(input, { ...init, headers })
+    },
+  })
+}
+
+void run()

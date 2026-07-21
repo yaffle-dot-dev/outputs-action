@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "ncc build src/index.ts -o dist",
-    "test": "tsc --outDir .test-dist && node --test .test-dist/environment.test.js",
+    "test": "tsc --outDir .test-dist && node --test .test-dist/*.test.js",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
