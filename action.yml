@@ -46,12 +46,32 @@ inputs:
 
 outputs:
   preview-id:
+    value: ${{ steps.fetch-outputs.outputs.preview-id }}
     description: "The Yaffle preview ID"
   preview-status:
+    value: ${{ steps.fetch-outputs.outputs.preview-status }}
     description: "The preview status (ready, planning, applying, failed, etc.)"
   outputs-json:
+    value: ${{ steps.fetch-outputs.outputs.outputs-json }}
     description: "All outputs as a JSON string"
 
 runs:
-  using: "node20"
-  main: "dist/index.js"
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+        node-version: "26.12.1"
+    - id: fetch-outputs
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/dist/index.js"
+      env:
+        INPUT_API-URL: ${{ inputs.api-url }}
+        INPUT_ORG: ${{ inputs.org }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_PR-NUMBER: ${{ inputs.pr-number }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_WORKSPACE: ${{ inputs.workspace }}
+        INPUT_HEAD-SHA: ${{ inputs.head-sha }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_WAIT: ${{ inputs.wait }}
+        INPUT_WAIT-TIMEOUT: ${{ inputs.wait-timeout }}
